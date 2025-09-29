@@ -1,0 +1,36 @@
+{
+	"name": "lead-scraper",
+	"version": "1.0.0",
+	"description": "AI-powered business lead generation tool",
+	"main": "index.js",
+	"scripts": {
+		"start": "node index.js",
+		"help": "node index.js help",
+		"status": "node index.js status",
+		"test": "node test-enhanced-scraper.js",
+		"test-lead-scraper": "node test-enhanced-scraper.js"
+	},
+	"keywords": [
+		"lead-generation",
+		"web-scraping",
+		"ai",
+		"business-intelligence",
+		"data-extraction",
+		"llm",
+		"gemini",
+		"microservice"
+	],
+	"author": "Your Name",
+	"license": "MIT",
+	"dependencies": {
+		"@google/generative-ai": "^0.2.1",
+		"axios": "^1.6.0",
+		"dotenv": "^17.2.2",
+		"exceljs": "^4.4.0",
+		"playwright": "^1.40.0",
+		"xlsx": "^0.18.5"
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	}
+}
