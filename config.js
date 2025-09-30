@@ -62,6 +62,52 @@ module.exports = {
 		SHOW_STATS: true, // Show history statistics at startup
 	},
 
+	DEPTH_SCRAPING: {
+		ENABLED: true,
+		DEFAULT_DEPTH: 1, // Default depth for child link scraping
+		MAX_DEPTH: 3, // Maximum allowed depth
+		MAX_CHILD_LINKS_PER_PAGE: 20, // Maximum child links to extract per page
+		EXCLUDE_PATTERNS: [ // Patterns to exclude from child links
+			"mailto:",
+			"tel:",
+			"javascript:",
+			"#",
+			".pdf",
+			".jpg",
+			".png",
+			".gif",
+			".css",
+			".js",
+			".xml",
+			".zip",
+			".rar",
+			"facebook.com",
+			"twitter.com",
+			"instagram.com",
+			"linkedin.com",
+			"youtube.com",
+			"google.com",
+			"amazon.com",
+			"wikipedia.org"
+		],
+		INCLUDE_PATTERNS: [ // Patterns to include for child links
+			"/about",
+			"/about-us",
+			"/profile",
+			"/contact",
+			"/contact-us",
+			"/services",
+			"/products",
+			"/team",
+			"/company",
+			"/blog",
+			"/news",
+			"/careers"
+		],
+		RESPECT_ROBOTS_TXT: false, // Whether to respect robots.txt
+		DELAY_BETWEEN_CHILD_REQUESTS: 2000, // Delay between child link requests
+	},
+
 	STEALTH: {
 		BLOCK_RESOURCES: ["image", "font", "media", "stylesheet"],
 		BLOCK_DOMAINS: [

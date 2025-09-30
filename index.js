@@ -9,16 +9,20 @@ class LeadScrapingApp {
 		this.leadScraper = new LeadScraper();
 	}
 
-	async runScraper(keywords, leadsPerKeyword = 50) {
+	async runScraper(keywords, leadsPerKeyword = 50, depth = 0) {
 		console.log("🚀 Starting Lead Scraper");
 		console.log("🔍 Keywords:", keywords.join(", "));
 		console.log(`📊 Leads per keyword: ${leadsPerKeyword}`);
+		if (depth > 0) {
+			console.log(`🔗 Depth scraping enabled: ${depth} levels`);
+		}
 		console.log("=".repeat(50));
 
 		try {
 			const leads = await this.leadScraper.scrapeLeads(
 				keywords,
-				leadsPerKeyword
+				leadsPerKeyword,
+				depth
 			);
 			return leads;
 		} catch (error) {
@@ -27,13 +31,16 @@ class LeadScrapingApp {
 		}
 	}
 
-	async scrapeUrls(urls) {
+	async scrapeUrls(urls, depth = 0) {
 		console.log("🚀 Starting Direct URL Scraper");
 		console.log("🌐 URLs:", urls.join(", "));
+		if (depth > 0) {
+			console.log(`🔗 Depth scraping enabled: ${depth} levels`);
+		}
 		console.log("=".repeat(50));
 
 		try {
-			const leads = await this.leadScraper.scrapeUrls(urls);
+			const leads = await this.leadScraper.scrapeUrls(urls, depth);
 			return leads;
 		} catch (error) {
 			console.error("❌ URL scraping failed:", error);
@@ -50,18 +57,19 @@ Workflow:
 2. 🔍 Search Google for websites using Playwright (keywords) OR scrape URLs directly
 3. 🧠 Use AI to filter relevant websites (keywords only)
 4. 🌐 Scrape website content directly with Playwright
-5. 🧠 Use AI to extract business data from page content
-6. 📝 Store extracted leads in Excel/JSON
+5. 🔗 Extract child links and scrape them recursively (if depth > 0)
+6. 🧠 Use AI to extract business data from page content
+7. 📝 Store extracted leads in Excel/JSON
 
 Usage:
   # Keyword-based scraping:
-  node index.js [keywords] [leads_per_keyword]
-  node index.js file [leads_per_keyword]    # Use keywords from keywords.json
-  node index.js config [leads_per_keyword]  # Use keywords from config.js
+  node index.js [keywords] [leads_per_keyword] [depth]
+  node index.js file [leads_per_keyword] [depth]    # Use keywords from keywords.json
+  node index.js config [leads_per_keyword] [depth]  # Use keywords from config.js
   
   # Direct URL scraping:
-  node index.js url [url1,url2,url3]        # Scrape specific URLs directly
-  node index.js urls [url1,url2,url3]       # Alternative syntax for URL scraping
+  node index.js url [url1,url2,url3] [depth]        # Scrape specific URLs directly
+  node index.js urls [url1,url2,url3] [depth]       # Alternative syntax for URL scraping
   
   # System commands:
   node index.js status                      # Show system status
@@ -73,18 +81,30 @@ Usage:
 Arguments:
   keywords              Comma-separated keywords OR "config" OR "file"
   leads_per_keyword     Number of leads to scrape per keyword (default: 50)
+  depth                 Depth level for child link scraping (0-3, default: 0)
   urls                  Comma-separated URLs to scrape directly
+
+Depth Scraping:
+  - depth 0: Only scrape the main URLs (default behavior)
+  - depth 1: Scrape main URLs + their child links (about, contact, services, etc.)
+  - depth 2: Scrape main URLs + child links + grandchild links
+  - depth 3: Maximum depth (main + child + grandchild + great-grandchild links)
+  
+  Child links are intelligently filtered to include relevant pages like:
+  - /about, /contact, /services, /products, /team, /company
+  - /blog, /news, /careers, /staff, /leadership, /management
+  - /portfolio, /gallery, /testimonials, /reviews, /faq
 
 Examples:
   # Keyword-based scraping:
-  node index.js "restaurants New York,pizza delivery Chicago" 25
-  node index.js "plumber Miami,dentist Los Angeles" 20
-  node index.js file 30
-  node index.js config 25
+  node index.js "restaurants New York,pizza delivery Chicago" 25 1
+  node index.js "plumber Miami,dentist Los Angeles" 20 2
+  node index.js file 30 1
+  node index.js config 25 0
   
   # Direct URL scraping:
-  node index.js url "https://example.com,https://business.com"
-  node index.js urls "https://restaurant.com,https://clinic.com,https://lawfirm.com"
+  node index.js url "https://example.com,https://business.com" 1
+  node index.js urls "https://restaurant.com,https://clinic.com,https://lawfirm.com" 2
   
   # System commands:
   node index.js history
@@ -474,9 +494,11 @@ async function main() {
 	// Check for URL scraping mode
 	if (args[0] === "url" || args[0] === "urls") {
 		const urlInput = args[1];
+		const depth = parseInt(args[2]) || 0;
+		
 		if (!urlInput) {
 			console.log("❌ No URLs provided for URL scraping mode");
-			console.log("💡 Usage: node index.js url \"https://example.com,https://business.com\"");
+			console.log("💡 Usage: node index.js url \"https://example.com,https://business.com\" [depth]");
 			return;
 		}
 
@@ -487,12 +509,13 @@ async function main() {
 
 		console.log(`\n📋 URL Scraping Configuration:`);
 		console.log(`   URLs: ${urls.length}`);
+		console.log(`   Depth: ${depth} levels`);
 		console.log(`   Output format: ${config.OUTPUT_FORMAT.toUpperCase()}`);
 		console.log(`   Browser automation: Playwright`);
 
 		try {
 			console.log("\n⏳ Starting URL scraper...");
-			const leads = await app.scrapeUrls(urls);
+			const leads = await app.scrapeUrls(urls, depth);
 			console.log(`\n🎉 URL scraping completed successfully!`);
 		} catch (error) {
 			console.error("\n❌ Error during URL scraping:", error.message);
@@ -508,9 +531,15 @@ async function main() {
 
 	const keywordInput = args[0];
 	const leadsPerKeyword = parseInt(args[1]) || 50;
+	const depth = parseInt(args[2]) || 0;
 
 	if (leadsPerKeyword < 1) {
 		console.log("❌ Leads per keyword must be at least 1");
+		return;
+	}
+
+	if (depth < 0 || depth > (config.DEPTH_SCRAPING?.MAX_DEPTH || 3)) {
+		console.log(`❌ Depth must be between 0 and ${config.DEPTH_SCRAPING?.MAX_DEPTH || 3}`);
 		return;
 	}
 
@@ -522,6 +551,7 @@ async function main() {
 	console.log(`\n📋 Scraping Configuration:`);
 	console.log(`   Keywords: ${keywords.length}`);
 	console.log(`   Leads per keyword: ${leadsPerKeyword}`);
+	console.log(`   Depth: ${depth} levels`);
 	console.log(`   Output format: ${config.OUTPUT_FORMAT.toUpperCase()}`);
 	console.log(`   Browser automation: Playwright`);
 	console.log(`   CAPTCHA handling: ${config.CAPTCHA?.ENABLED ? 'Enabled' : 'Disabled'}`);
@@ -537,10 +567,15 @@ async function main() {
 		console.log(`   History retention: ${config.HISTORY?.MAX_AGE_DAYS || 30} days`);
 		console.log(`   Daily reset: Each day creates a new history file`);
 	}
+	console.log(`   Depth scraping: ${config.DEPTH_SCRAPING?.ENABLED ? 'Enabled' : 'Disabled'}`);
+	if (config.DEPTH_SCRAPING?.ENABLED && depth > 0) {
+		console.log(`   Max child links per page: ${config.DEPTH_SCRAPING?.MAX_CHILD_LINKS_PER_PAGE || 10}`);
+		console.log(`   Delay between child requests: ${config.DEPTH_SCRAPING?.DELAY_BETWEEN_CHILD_REQUESTS || 2000}ms`);
+	}
 
 	try {
 		console.log("\n⏳ Starting scraper...");
-		const leads = await app.runScraper(keywords, leadsPerKeyword);
+		const leads = await app.runScraper(keywords, leadsPerKeyword, depth);
 
 		console.log(`\n🎉 Scraping completed successfully!`);
 		// console.log(`   Leads with name: ${leads.filter((l) => l.name).length}`);

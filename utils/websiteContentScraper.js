@@ -1,14 +1,17 @@
 const config = require("../config");
+const ChildLinkExtractor = require("./childLinkExtractor");
 require("dotenv").config();
 
 class WebsiteContentScraper {
 	constructor(context) {
 		this.context = context;
 		this.maxConcurrent = 3;
+		this.childLinkExtractor = new ChildLinkExtractor();
+		this.depthScrapingEnabled = config.DEPTH_SCRAPING?.ENABLED || false;
 	}
 
-	async scrapeWebsites(urls) {
-		console.log(`Starting to scrape ${urls.length} websites`);
+	async scrapeWebsites(urls, depth = 0) {
+		console.log(`Starting to scrape ${urls.length} websites${depth > 0 ? ` (depth: ${depth})` : ''}`);
 
 		const results = [];
 		const batches = this.createBatches(urls, this.maxConcurrent);
@@ -18,7 +21,7 @@ class WebsiteContentScraper {
 
 			const batchResults = await Promise.allSettled(
 				batches[i].map((urlData) =>
-					this.scrapeWebsite(urlData.url || urlData.link, urlData)
+					this.scrapeWebsite(urlData.url || urlData.link, urlData, depth)
 				)
 			);
 
@@ -42,11 +45,94 @@ class WebsiteContentScraper {
 		return results;
 	}
 
-	async scrapeWebsite(url, metadata = {}) {
+	async scrapeWebsitesWithDepth(urls, maxDepth = 1) {
+		if (!this.depthScrapingEnabled) {
+			console.log('⚠️ Depth scraping is disabled, falling back to regular scraping');
+			return this.scrapeWebsites(urls);
+		}
+
+		console.log(`🚀 Starting depth-based scraping (max depth: ${maxDepth})`);
+		
+		const allResults = [];
+		const urlsToProcess = [...urls];
+		const processedUrls = new Set();
+		
+		// Clear visited URLs for new scraping session
+		this.childLinkExtractor.clearVisited();
+
+		for (let currentDepth = 0; currentDepth <= maxDepth; currentDepth++) {
+			if (urlsToProcess.length === 0) {
+				console.log(`✅ No more URLs to process at depth ${currentDepth}`);
+				break;
+			}
+
+			console.log(`\n📊 Processing depth ${currentDepth}: ${urlsToProcess.length} URLs`);
+
+			// Filter out already processed URLs
+			const newUrls = urlsToProcess.filter(urlData => {
+				const url = urlData.url || urlData.link;
+				return !processedUrls.has(url);
+			});
+
+			if (newUrls.length === 0) {
+				console.log(`⚠️ No new URLs to process at depth ${currentDepth}`);
+				break;
+			}
+
+			// Mark URLs as processed
+			newUrls.forEach(urlData => {
+				const url = urlData.url || urlData.link;
+				processedUrls.add(url);
+				this.childLinkExtractor.markAsVisited(url);
+			});
+
+			// Scrape current depth URLs
+			const depthResults = await this.scrapeWebsites(newUrls, currentDepth);
+			allResults.push(...depthResults);
+
+			// If we haven't reached max depth, extract child links
+			if (currentDepth < maxDepth) {
+				const childLinks = await this.extractChildLinksFromResults(depthResults);
+				
+				if (childLinks.length > 0) {
+					console.log(`🔗 Found ${childLinks.length} child links for depth ${currentDepth + 1}`);
+					
+					// Add child links to processing queue
+					const childUrlData = childLinks.map(link => ({
+						url: link.url,
+						title: link.text,
+						snippet: link.title,
+						keyword: link.parentUrl,
+						depth: link.depth,
+						parentUrl: link.parentUrl
+					}));
+
+					urlsToProcess.push(...childUrlData);
+				} else {
+					console.log(`⚠️ No child links found at depth ${currentDepth}`);
+				}
+			}
+
+			// Add delay between depth levels
+			if (currentDepth < maxDepth) {
+				const delay = config.DEPTH_SCRAPING?.DELAY_BETWEEN_CHILD_REQUESTS || 2000;
+				console.log(`⏳ Waiting ${delay}ms before processing next depth...`);
+				await this.delay(delay);
+			}
+		}
+
+		console.log(`\n🎉 Depth scraping completed! Total results: ${allResults.length}`);
+		console.log(`📊 Processed URLs: ${processedUrls.size}`);
+		console.log(`🔗 Child link extractor stats:`, this.childLinkExtractor.getStats());
+
+		return allResults;
+	}
+
+	async scrapeWebsite(url, metadata = {}, depth = 0) {
 		let page = null;
 
 		try {
-			console.log(`Scraping website: ${url}`);
+			console.log(`Scraping website: ${url}${depth > 0 ? ` (depth: ${depth})` : ''}`);
 
 			page = await this.context.newPage();
 
@@ -68,14 +154,30 @@ class WebsiteContentScraper {
 				throw new Error("Insufficient content extracted");
 			}
 
+			// Extract child links if depth scraping is enabled and we haven't reached max depth
+			let childLinks = [];
+			if (this.depthScrapingEnabled && depth < (config.DEPTH_SCRAPING?.MAX_DEPTH || 3)) {
+				try {
+					childLinks = await this.childLinkExtractor.extractChildLinks(page, url, depth);
+				} catch (error) {
+					console.log(`⚠️ Failed to extract child links from ${url}:`, error.message);
+				}
+			}
+
 			await this.delay(1000, 3000); // Random delay between requests
 
 			return {
 				url,
 				content,
-				metadata,
+				metadata: {
+					...metadata,
+					depth: depth,
+					parentUrl: metadata.parentUrl || null
+				},
 				extractedAt: new Date().toISOString(),
 				contentLength: content.length,
+				childLinks: childLinks,
+				depth: depth
 			};
 		} catch (error) {
 			console.log(`Failed to scrape ${url}:`, error.message);
@@ -85,6 +187,29 @@ class WebsiteContentScraper {
 				await page.close();
 			}
 		}
+	}
+
+	async extractChildLinksFromResults(results) {
+		const allChildLinks = [];
+		
+		for (const result of results) {
+			if (result && result.childLinks && result.childLinks.length > 0) {
+				allChildLinks.push(...result.childLinks);
+			}
+		}
+
+		// Remove duplicates based on URL
+		const uniqueChildLinks = [];
+		const seenUrls = new Set();
+
+		for (const link of allChildLinks) {
+			if (!seenUrls.has(link.url)) {
+				seenUrls.add(link.url);
+				uniqueChildLinks.push(link);
+			}
+		}
+
+		return uniqueChildLinks;
 	}
 
 	async extractContent(page) {

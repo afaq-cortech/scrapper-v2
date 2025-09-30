@@ -19,13 +19,13 @@ class LeadScraper {
 		this.isRunning = false;
 	}
 
-	async scrapeLeads(keywords, leadsPerKeyword = 50) {
+	async scrapeLeads(keywords, leadsPerKeyword = 50, depth = 0) {
 		if (this.isRunning) {
 			throw new Error("Scraper is already running");
 		}
 
 		this.isRunning = true;
-		console.log(`🚀 Starting Lead Scraper for ${keywords.length} keywords`);
+		console.log(`🚀 Starting Lead Scraper for ${keywords.length} keywords${depth > 0 ? ` (depth: ${depth})` : ''}`);
 
 		try {
 			await this.googleScraper.initialize();
@@ -84,8 +84,21 @@ class LeadScraper {
 					);
 
 					console.log(`🌐 Scraping websites with Playwright...`);
-					const scrapedResults =
-						await this.websiteContentScraper.scrapeWebsites(
+					let scrapedResults;
+					
+					if (depth > 0 && config.DEPTH_SCRAPING?.ENABLED) {
+						console.log(`🔗 Using depth-based scraping (depth: ${depth})`);
+						scrapedResults = await this.websiteContentScraper.scrapeWebsitesWithDepth(
+							regularResults.map((result) => ({
+								url: result.url,
+								title: result.title,
+								snippet: result.snippet,
+								keyword: keyword,
+							})),
+							depth
+						);
+					} else {
+						scrapedResults = await this.websiteContentScraper.scrapeWebsites(
 							regularResults.map((result) => ({
 								url: result.url,
 								title: result.title,
@@ -93,6 +106,7 @@ class LeadScraper {
 								keyword: keyword,
 							}))
 						);
+					}
 
 					console.log(`🧠 Extracting data with LLM...`);
 					const extractedData = await this.leadExtractor.extractLeads(
@@ -172,13 +186,13 @@ class LeadScraper {
 		}
 	}
 
-	async scrapeUrls(urls) {
+	async scrapeUrls(urls, depth = 0) {
 		if (this.isRunning) {
 			throw new Error("Scraper is already running");
 		}
 
 		this.isRunning = true;
-		console.log(`🚀 Starting Direct URL Scraper for ${urls.length} URLs`);
+		console.log(`🚀 Starting Direct URL Scraper for ${urls.length} URLs${depth > 0 ? ` (depth: ${depth})` : ''}`);
 
 		try {
 			await this.googleScraper.initialize();
@@ -199,14 +213,28 @@ class LeadScraper {
 
 				try {
 					console.log(`🌐 Scraping website content...`);
-					const scrapedResults = await this.websiteContentScraper.scrapeWebsites([
-						{
-							url: url,
-							title: "",
-							snippet: "",
-							keyword: "direct_url",
-						},
-					]);
+					let scrapedResults;
+					
+					if (depth > 0 && config.DEPTH_SCRAPING?.ENABLED) {
+						console.log(`🔗 Using depth-based scraping (depth: ${depth})`);
+						scrapedResults = await this.websiteContentScraper.scrapeWebsitesWithDepth([
+							{
+								url: url,
+								title: "",
+								snippet: "",
+								keyword: "direct_url",
+							},
+						], depth);
+					} else {
+						scrapedResults = await this.websiteContentScraper.scrapeWebsites([
+							{
+								url: url,
+								title: "",
+								snippet: "",
+								keyword: "direct_url",
+							},
+						]);
+					}
 
 					if (scrapedResults.length === 0) {
 						console.log(`⚠️ No content scraped from: ${url}`);
