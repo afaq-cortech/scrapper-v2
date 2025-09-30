@@ -66,7 +66,7 @@ module.exports = {
 		ENABLED: true,
 		DEFAULT_DEPTH: 1, // Default depth for child link scraping
 		MAX_DEPTH: 3, // Maximum allowed depth
-		MAX_CHILD_LINKS_PER_PAGE: 20, // Maximum child links to extract per page
+		MAX_CHILD_LINKS_PER_PAGE: 100, // Maximum child links to extract per page
 		EXCLUDE_PATTERNS: [ // Patterns to exclude from child links
 			"mailto:",
 			"tel:",

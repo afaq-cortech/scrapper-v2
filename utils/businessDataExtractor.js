@@ -22,7 +22,7 @@ KEYWORD: "${keyword}"
 URL: "${url}"
 
 CONTENT:
-${pageContent.substring(0, 10000)}
+${pageContent.substring(0, 3000)}
 
 Extract business information in JSON format:
 {

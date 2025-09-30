@@ -597,28 +597,24 @@ class DataProcessor {
   // Remove duplicate leads with improved logic
   removeDuplicates(leads) {
     const uniqueLeads = [];
-    const seenEmails = new Set();
-    const seenPhones = new Set();
-    // const seenWebsites = new Set();
-    // const seenCompanies = new Set();
+    const seenNameEmail = new Set(); // Combined name+email for better deduplication
 
     leads.forEach((lead) => {
       const email = this.cleanEmail(lead.email);
-      const phone = this.cleanPhone(lead.phone);
+      const name = lead.name ? lead.name.toLowerCase().trim() : '';
 
-      // Check for duplicates by email, phone, website, or company
-      if (
-        (email && seenEmails.has(email)) ||
-        (phone && seenPhones.has(phone)) 
-      ) {
+      // Create a unique key combining name and email for better deduplication
+      const nameEmailKey = `${name}|${email}`;
+
+      // Only remove if we've seen this exact name+email combination
+      // This prevents removing different people who might share the same email
+      if (seenNameEmail.has(nameEmailKey)) {
+        console.log(`🗑️ Removing duplicate: ${lead.name} (${email})`);
         return;
       }
 
-      if (email) seenEmails.add(email);
-      if (phone) seenPhones.add(phone);
-      // if (website) seenWebsites.add(website);
-      // if (company) seenCompanies.add(company);
-
+      // Add this combination to our tracking
+      seenNameEmail.add(nameEmailKey);
       uniqueLeads.push(lead);
     });
 

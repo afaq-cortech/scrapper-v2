@@ -49,10 +49,35 @@ class ChildLinkExtractor {
 				return links;
 			});
 
+			console.log(`📊 Found ${allLinks.length} total links on page`);
+			
+			// Debug: Show some sample links for profile-related content
+			const profileLinks = allLinks.filter(link => 
+				link.href.includes('/profile/') || 
+				link.text.toLowerCase().includes('profile') ||
+				link.href.includes('/people/')
+			);
+			
+			if (profileLinks.length > 0) {
+				console.log(`👥 Found ${profileLinks.length} profile-related links:`);
+				profileLinks.slice(0, 5).forEach(link => {
+					console.log(`   - ${link.text} -> ${link.href}`);
+				});
+			}
+
 			// Filter and process links
 			const childLinks = this.filterAndProcessLinks(allLinks, baseUrl, currentDepth);
 			
 			console.log(`✅ Found ${childLinks.length} valid child links from ${baseUrl}`);
+			
+			// Debug: Show some sample child links
+			if (childLinks.length > 0) {
+				console.log(`🔍 Sample child links:`);
+				childLinks.slice(0, 5).forEach(link => {
+					console.log(`   - ${link.text} -> ${link.url}`);
+				});
+			}
+			
 			return childLinks;
 
 		} catch (error) {
@@ -72,6 +97,11 @@ class ChildLinkExtractor {
 		const childLinks = [];
 		const baseDomain = this.getDomain(baseUrl);
 		const seenUrls = new Set();
+		let filteredCount = 0;
+		let resolvedCount = 0;
+		let visitedCount = 0;
+
+		console.log(`🔍 Processing ${rawLinks.length} raw links...`);
 
 		for (const link of rawLinks) {
 			try {
@@ -87,14 +117,17 @@ class ChildLinkExtractor {
 				if (!resolvedUrl) {
 					continue;
 				}
+				resolvedCount++;
 
 				// Skip if we've already visited this URL
 				if (this.visitedUrls.has(resolvedUrl)) {
+					visitedCount++;
 					continue;
 				}
 
 				// Apply filtering rules
 				if (!this.isValidChildLink(resolvedUrl, link, baseDomain)) {
+					filteredCount++;
 					continue;
 				}
 
@@ -126,6 +159,8 @@ class ChildLinkExtractor {
 			}
 		}
 
+		console.log(`📈 Filtering stats: ${resolvedCount} resolved, ${visitedCount} already visited, ${filteredCount} filtered out, ${childLinks.length} accepted`);
+
 		return childLinks;
 	}
 
@@ -142,61 +177,65 @@ class ChildLinkExtractor {
 
 			// Must be HTTP or HTTPS
 			if (!['http:', 'https:'].includes(urlObj.protocol)) {
+				console.log(`❌ Invalid protocol: ${url}`);
 				return false;
 			}
 
-			// Check exclude patterns
+			// Check exclude patterns - these will be rejected
 			for (const pattern of this.excludePatterns) {
 				if (url.includes(pattern) || link.text.toLowerCase().includes(pattern.toLowerCase())) {
+					console.log(`❌ Excluded by pattern "${pattern}": ${url} (${link.text})`);
 					return false;
 				}
 			}
 
-			// Must be from the same domain (for child links)
-			if (urlObj.hostname !== baseDomain) {
-				return false;
-			}
+			// Skip same domain check - allow cross-domain links
+			// if (urlObj.hostname !== baseDomain) {
+			// 	console.log(`❌ Different domain: ${urlObj.hostname} != ${baseDomain}`);
+			// 	return false;
+			// }
 
-			// Check if link text suggests it's a relevant page
+			// Skip very short link texts
 			const linkText = link.text.toLowerCase();
-			const relevantKeywords = [
-				'about', 'contact', 'services', 'products', 'team', 'company',
-				'blog', 'news', 'careers', 'staff', 'leadership', 'management',
-				'portfolio', 'gallery', 'testimonials', 'reviews', 'faq',
-				'help', 'support', 'location', 'address', 'phone', 'email'
-			];
-
-			// If it matches include patterns, it's definitely valid
-			for (const pattern of this.includePatterns) {
-				if (url.includes(pattern)) {
-					return true;
-				}
-			}
-
-			// Check if link text contains relevant keywords
-			const hasRelevantKeyword = relevantKeywords.some(keyword => 
-				linkText.includes(keyword)
-			);
-
-			// Skip very short or generic link texts
 			if (linkText.length < 3) {
+				console.log(`❌ Too short: "${linkText}"`);
 				return false;
 			}
 
 			// Skip generic navigation links
 			const genericNavTexts = [
 				'home', 'main', 'menu', 'navigation', 'nav', 'skip', 'top',
-				'back', 'next', 'previous', 'more', 'less', 'show', 'hide'
+				'back', 'next', 'previous', 'more', 'less', 'hide',
+				'click here', 'read more', 'learn more', 'view all', 'see more'
 			];
 
 			if (genericNavTexts.some(generic => linkText === generic)) {
+				console.log(`❌ Generic nav text: "${linkText}"`);
 				return false;
 			}
 
-			// If it has relevant keywords or is not a generic nav link, it's valid
-			return hasRelevantKeyword || linkText.length > 10;
+			// Skip empty or whitespace-only links
+			if (linkText.trim().length === 0) {
+				console.log(`❌ Empty text`);
+				return false;
+			}
+
+			// Skip links that are just symbols or numbers
+			if (/^[^a-zA-Z]*$/.test(linkText.trim())) {
+				console.log(`❌ No letters: "${linkText}"`);
+				return false;
+			}
+
+			// Debug: Log accepted links for profile-related content
+			if (url.includes('/profile/') || linkText.includes('profile') || url.includes('/people/')) {
+				console.log(`✅ Profile link accepted: ${linkText} -> ${url}`);
+			}
+
+			// All other links are valid (open approach)
+			return true;
 
 		} catch (error) {
+			console.log(`❌ Error validating link: ${error.message}`);
 			return false;
 		}
 	}

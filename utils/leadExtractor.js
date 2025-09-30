@@ -45,7 +45,7 @@ class LeadExtractor {
     const wordCount = this.countWords(content);
 
     // If content is small, process normally
-    if (wordCount <= 10000) {
+    if (wordCount <= 3000) {
       return await this.processSingleBatch(websiteData, keyword, content);
     }
 
@@ -67,7 +67,7 @@ class LeadExtractor {
   }
 
   async processLargeContent(websiteData, keyword, content) {
-    const batches = this.splitContentIntoBatches(content, 10000);
+    const batches = this.splitContentIntoBatches(content, 3000);
     let contextSummary = "";
     let allLeads = [];
 

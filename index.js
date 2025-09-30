@@ -569,7 +569,7 @@ async function main() {
 	}
 	console.log(`   Depth scraping: ${config.DEPTH_SCRAPING?.ENABLED ? 'Enabled' : 'Disabled'}`);
 	if (config.DEPTH_SCRAPING?.ENABLED && depth > 0) {
-		console.log(`   Max child links per page: ${config.DEPTH_SCRAPING?.MAX_CHILD_LINKS_PER_PAGE || 10}`);
+		console.log(`   Max child links per page: ${config.DEPTH_SCRAPING?.MAX_CHILD_LINKS_PER_PAGE || 30}`);
 		console.log(`   Delay between child requests: ${config.DEPTH_SCRAPING?.DELAY_BETWEEN_CHILD_REQUESTS || 2000}ms`);
 	}
 
