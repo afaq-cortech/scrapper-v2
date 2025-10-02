@@ -1,4 +1,5 @@
 const GoogleScraper = require("../utils/googleScraper");
+const GMBScraper = require("./gmbScraper");
 const UrlFilter = require("../utils/urlFilter");
 const WebsiteContentScraper = require("../utils/websiteContentScraper");
 const LeadExtractor = require("../utils/leadExtractor");
@@ -10,6 +11,7 @@ const path = require("path");
 class LeadScraper {
 	constructor() {
 		this.googleScraper = new GoogleScraper();
+		this.gmbScraper = config.GMB?.ENABLED ? new GMBScraper() : null;
 		this.urlFilter = new UrlFilter();
 		this.websiteContentScraper = null; // Will be initialized with context
 		this.leadExtractor = new LeadExtractor();
@@ -29,6 +31,12 @@ class LeadScraper {
 
 		try {
 			await this.googleScraper.initialize();
+
+			// Initialize GMB scraper if enabled
+			if (this.gmbScraper && config.GMB?.SEPARATE_BROWSER) {
+				console.log("🏢 Initializing separate GMB scraper...");
+				await this.gmbScraper.initialize();
+			}
 
 			// Initialize website content scraper with the context from Google scraper
 			this.websiteContentScraper = new WebsiteContentScraper(
@@ -59,13 +67,27 @@ class LeadScraper {
 						continue;
 					}
 
-					// Separate GMB listings from regular search results
-					const gmbListings = searchResults.filter(result => result.source === 'Google My Business');
+					// Use regular search results for website scraping
 					const regularResults = searchResults.filter(result => result.source !== 'Google My Business');
-
 					console.log(`📊 Found ${regularResults.length} regular search results`);
-					console.log(`🏢 Found ${gmbListings.length} GMB listings`);
-					totalUrlsFound += searchResults.length;
+					totalUrlsFound += regularResults.length;
+
+					// Scrape GMB listings using dedicated GMB scraper
+					let gmbListings = [];
+					if (this.gmbScraper && config.GMB?.ENABLED) {
+						try {
+							console.log(`🏢 Scraping GMB listings with dedicated scraper...`);
+							gmbListings = await this.gmbScraper.scrapeGMBListings(keyword, config.GMB?.MAX_RESULTS_PER_SEARCH);
+							console.log(`🏢 Found ${gmbListings.length} GMB listings`);
+						} catch (gmbError) {
+							console.error(`❌ GMB scraping failed for "${keyword}":`, gmbError.message);
+							gmbListings = [];
+						}
+					} else {
+						// Fallback to GMB listings from regular search if available
+						gmbListings = searchResults.filter(result => result.source === 'Google My Business');
+						console.log(`🏢 Found ${gmbListings.length} GMB listings from regular search`);
+					}
 
 					// Show history information if enabled
 					if (config.HISTORY?.ENABLED && searchResults.length === 0) {
@@ -182,6 +204,9 @@ class LeadScraper {
 			throw error;
 		} finally {
 			await this.googleScraper.close();
+			if (this.gmbScraper && config.GMB?.SEPARATE_BROWSER) {
+				await this.gmbScraper.close();
+			}
 			this.isRunning = false;
 		}
 	}
@@ -291,6 +316,9 @@ class LeadScraper {
 			throw error;
 		} finally {
 			await this.googleScraper.close();
+			if (this.gmbScraper && config.GMB?.SEPARATE_BROWSER) {
+				await this.gmbScraper.close();
+			}
 			this.isRunning = false;
 		}
 	}
@@ -330,19 +358,20 @@ class LeadScraper {
 			// Create lead object with GMB-specific fields
 			const lead = {
 				name: gmbData.name || "",
-				title: "", // GMB listings typically don't have individual contact titles
+				title: gmbData.title || gmbData.name || "", // Use name as title for consistency
 				company: gmbData.name || "", // Use business name as company
-				email: "", // GMB listings typically don't show emails
+				email: gmbData.email || "", // Extract email if available
 				phone: gmbData.phone || "",
 				// GMB-specific fields
 				address: gmbData.address || "",
 				rating: gmbData.rating || "",
 				reviewCount: gmbData.reviewCount || "",
 				category: gmbData.category || "",
-				website: gmbData.website || "",
+				website: gmbData.website || gmbData.url || "",
 				hours: gmbData.hours || "",
-				source: "Google My Business",
+				source: gmbData.source || "Google My Business",
 				keyword: keyword,
+				position: gmbData.position || 0,
 				extractedAt: gmbData.extractedAt || new Date().toISOString()
 			};
 
@@ -378,6 +407,9 @@ class LeadScraper {
 			console.log("🛑 Stopping scraper...");
 			this.isRunning = false;
 			await this.googleScraper.close();
+			if (this.gmbScraper && config.GMB?.SEPARATE_BROWSER) {
+				await this.gmbScraper.close();
+			}
 		}
 	}
 }

@@ -8,7 +8,8 @@
 		"help": "node index.js help",
 		"status": "node index.js status",
 		"test": "node test-enhanced-scraper.js",
-		"test-lead-scraper": "node test-enhanced-scraper.js"
+		"test-lead-scraper": "node test-enhanced-scraper.js",
+		"test-gmb": "node test-gmb-scraper.js"
 	},
 	"keywords": [
 		"lead-generation",

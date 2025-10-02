@@ -131,6 +131,34 @@ module.exports = {
 		RANDOMIZE_USER_AGENT: true,
 	},
 
+	GMB: {
+		ENABLED: true,
+		SEPARATE_BROWSER: true, // Use separate Chromium instance for GMB scraping
+		HEADLESS: false, // GMB scraping might need visual interaction
+		MAX_RESULTS_PER_SEARCH: 20, // Maximum GMB listings to extract per search
+		DELAY_BETWEEN_REQUESTS: 2000, // Delay between GMB requests
+		EXTRACTION_TIMEOUT: 30000, // Timeout for GMB data extraction
+		RETRY_ATTEMPTS: 3, // Number of retry attempts for failed extractions
+		SCROLL_ATTEMPTS: 3, // Number of scroll attempts to load more GMB listings
+		WAIT_FOR_LOAD: 5000, // Wait time for GMB listings to load
+		CLICK_FOR_DETAILS: true, // Click on listings to get detailed contact info
+		MAX_DETAIL_CLICKS: 5, // Maximum number of listings to click for details
+		DETAIL_WAIT_TIME: 3000, // Wait time after clicking for details to load
+		REQUIRE_CONTACT: true, // Only return listings with phone OR email
+		EXTRACT_FIELDS: {
+			NAME: true,
+			PHONE: true,
+			EMAIL: true,
+			ADDRESS: true,
+			WEBSITE: true,
+			RATING: true,
+			REVIEW_COUNT: true,
+			CATEGORY: true,
+			HOURS: true,
+			DESCRIPTION: true
+		}
+	},
+
 	// CAPTCHA_SOLVER: {
 	// 	ENABLED: false,
 	// 	API_KEY: process.env.CAPTCHA_API_KEY || "",
