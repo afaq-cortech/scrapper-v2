@@ -147,6 +147,57 @@ class GMBScraper {
 		console.log(`🏢 Searching GMB listings for: "${searchTerm}" (target: ${targetResults} results)`);
 
 		try {
+			// Try multiple search strategies to get more results
+			let allListings = [];
+			
+			// Strategy 1: Standard Google Maps search
+			console.log(`🗺️ Strategy 1: Standard Google Maps search`);
+			const listings1 = await this._searchWithStrategy(searchTerm, targetResults, 'standard');
+			allListings.push(...listings1);
+			
+			// If we don't have enough results, try alternative strategies
+			if (allListings.length < targetResults) {
+				console.log(`🔄 Need more results (${allListings.length}/${targetResults}), trying alternative strategies...`);
+				
+				// Strategy 2: Search with "near me" modifier
+				const nearMeSearch = `${searchTerm} near me`;
+				console.log(`🗺️ Strategy 2: Searching with "near me": ${nearMeSearch}`);
+				const listings2 = await this._searchWithStrategy(nearMeSearch, targetResults - allListings.length, 'nearme');
+				
+				// Merge results avoiding duplicates
+				const existingNames = new Set(allListings.map(l => l.name));
+				const newListings2 = listings2.filter(l => !existingNames.has(l.name));
+				allListings.push(...newListings2);
+			}
+			
+			// Strategy 3: Try with location-specific search if still not enough
+			if (allListings.length < targetResults && searchTerm.includes(' ')) {
+				const parts = searchTerm.split(' ');
+				if (parts.length >= 2) {
+					const locationSpecific = `${parts[0]} in ${parts.slice(1).join(' ')}`;
+					console.log(`🗺️ Strategy 3: Location-specific search: ${locationSpecific}`);
+					const listings3 = await this._searchWithStrategy(locationSpecific, targetResults - allListings.length, 'location');
+					
+					const existingNames = new Set(allListings.map(l => l.name));
+					const newListings3 = listings3.filter(l => !existingNames.has(l.name));
+					allListings.push(...newListings3);
+				}
+			}
+
+			// Remove duplicates and limit to target
+			const uniqueListings = allListings.slice(0, targetResults);
+			
+			console.log(`✅ GMB search completed: ${uniqueListings.length} unique listings found for "${searchTerm}"`);
+			return uniqueListings;
+
+		} catch (error) {
+			console.error(`❌ Error scraping GMB listings for "${searchTerm}":`, error.message);
+			throw error;
+		}
+	}
+
+	async _searchWithStrategy(searchTerm, maxResults, strategy) {
+		try {
 			// Navigate to Google Maps search
 			const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchTerm)}`;
 			console.log(`🗺️ Navigating to: ${searchUrl}`);
@@ -156,24 +207,26 @@ class GMBScraper {
 				timeout: config.GMB?.EXTRACTION_TIMEOUT || 30000,
 			});
 
-		// Wait for initial load
-		await this.page.waitForTimeout(config.GMB?.WAIT_FOR_LOAD || 5000);
+			// Wait for initial load
+			await this.page.waitForTimeout(config.GMB?.WAIT_FOR_LOAD || 5000);
 
-		// Wait for search results to appear
-		await this._waitForGMBResults();
+			// Wait for search results to appear
+			await this._waitForGMBResults();
 
-		// Debug: Check what elements are available
-		await this._debugPageElements();
+			// Debug: Check what elements are available (only for first strategy)
+			if (strategy === 'standard') {
+				await this._debugPageElements();
+			}
 
 			// Scroll to load more results if needed
-			const allListings = await this._extractAllGMBListings(targetResults);
+			const allListings = await this._extractAllGMBListings(maxResults);
 
-			console.log(`✅ GMB search completed: ${allListings.length} listings found for "${searchTerm}"`);
+			console.log(`📊 Strategy "${strategy}" found: ${allListings.length} listings`);
 			return allListings;
 
 		} catch (error) {
-			console.error(`❌ Error scraping GMB listings for "${searchTerm}":`, error.message);
-			throw error;
+			console.error(`❌ Error with strategy "${strategy}":`, error.message);
+			return [];
 		}
 	}
 
@@ -242,9 +295,11 @@ class GMBScraper {
 		}
 
 		// Click on listings to get detailed contact information
-		if (config.GMB?.CLICK_FOR_DETAILS && allListings.length > 0) {
+		if (config.GMB?.CLICK_FOR_DETAILS && !config.GMB?.ULTRA_FAST_MODE && allListings.length > 0) {
 			console.log(`🔍 Clicking on listings to get detailed contact information...`);
 			allListings = await this._getDetailedContactInfo(allListings);
+		} else if (config.GMB?.ULTRA_FAST_MODE) {
+			console.log(`⚡ Ultra fast mode: Skipping detail clicks for maximum speed`);
 		}
 
 		// Filter listings to only include those with contact info if required
@@ -488,33 +543,70 @@ class GMBScraper {
 
 	async _scrollToLoadMore() {
 		try {
-			// Scroll within the results panel
-			await this.page.evaluate(() => {
-				// Try to find the scrollable results container
-				const scrollableSelectors = [
-					'[role="main"]',
-					'.m6QErb',
-					'.siAUzd',
-					'#pane'
-				];
+			console.log("🔄 Attempting multiple scroll strategies to load more results...");
+			
+			// Strategy 1: Scroll within the results panel multiple times
+			for (let i = 0; i < 3; i++) {
+				await this.page.evaluate(() => {
+					// Try to find the scrollable results container
+					const scrollableSelectors = [
+						'[role="main"]',
+						'.m6QErb .siAUzd', // More specific selector
+						'.siAUzd',
+						'#pane',
+						'[data-value="Search results"]'
+					];
 
-				let scrollContainer = null;
-				for (const selector of scrollableSelectors) {
-					scrollContainer = document.querySelector(selector);
-					if (scrollContainer) break;
-				}
+					let scrollContainer = null;
+					for (const selector of scrollableSelectors) {
+						scrollContainer = document.querySelector(selector);
+						if (scrollContainer) {
+							console.log(`Found scrollable container: ${selector}`);
+							break;
+						}
+					}
 
-				if (scrollContainer) {
-					scrollContainer.scrollTop = scrollContainer.scrollHeight;
-				} else {
-					// Fallback to window scroll
-					window.scrollTo(0, document.body.scrollHeight);
-				}
-			});
+					if (scrollContainer) {
+						const currentScrollTop = scrollContainer.scrollTop;
+						scrollContainer.scrollTop = scrollContainer.scrollHeight;
+						console.log(`Scrolled from ${currentScrollTop} to ${scrollContainer.scrollTop}`);
+					} else {
+						// Fallback to window scroll
+						window.scrollTo(0, document.body.scrollHeight);
+						console.log("Used window scroll fallback");
+					}
+				});
+				
+				await this.page.waitForTimeout(1500); // Wait for content to load
+			}
 
-			// Also try pressing Page Down key
-			await this.page.keyboard.press('PageDown');
+			// Strategy 2: Try keyboard navigation
+			await this.page.keyboard.press('End');
 			await this.page.waitForTimeout(1000);
+			
+			// Strategy 3: Multiple Page Down presses
+			for (let i = 0; i < 5; i++) {
+				await this.page.keyboard.press('PageDown');
+				await this.page.waitForTimeout(500);
+			}
+			
+			// Strategy 4: Try to click "Show more results" button if it exists
+			try {
+				const moreButton = await this.page.locator('text="Show more results", text="More results", [aria-label*="more"], [aria-label*="More"]').first();
+				if (await moreButton.count() > 0) {
+					console.log("🔘 Found 'More results' button, clicking...");
+					await moreButton.click();
+					await this.page.waitForTimeout(2000);
+				}
+			} catch (error) {
+				// Button not found, continue
+			}
+			
+			// Strategy 5: Simulate mouse wheel scrolling
+			await this.page.mouse.wheel(0, 1000);
+			await this.page.waitForTimeout(1000);
+			
+			console.log("✅ Completed all scroll strategies");
 			
 		} catch (error) {
 			console.log("Error scrolling:", error.message);
@@ -556,30 +648,46 @@ class GMBScraper {
 				return info;
 			});
 
-			console.log("🔍 Debug Info:");
-			console.log(`   URL: ${debugInfo.url}`);
-			console.log(`   Title: ${debugInfo.title}`);
-			console.log(`   Body preview: ${debugInfo.bodyText}...`);
-			console.log("   Element counts:");
-			Object.entries(debugInfo.elementCounts).forEach(([selector, count]) => {
-				if (count > 0) {
-					console.log(`     ${selector}: ${count}`);
-				}
-			});
-
 		} catch (error) {
 			console.log("Debug error:", error.message);
 		}
 	}
 
 	async _getDetailedContactInfo(listings) {
-		const maxClicks = Math.min(listings.length, config.GMB?.MAX_DETAIL_CLICKS || 5);
+		const maxClicks = Math.min(listings.length, config.GMB?.MAX_DETAIL_CLICKS || 3);
 		const detailedListings = [];
+		const fastMode = config.GMB?.FAST_MODE || false;
 
-		console.log(`🔍 Getting detailed info for ${maxClicks} listings...`);
+		console.log(`🔍 Getting detailed info for ${maxClicks} listings${fastMode ? ' (fast mode)' : ''}...`);
+
+		// Fast mode: Try to extract contact info without clicking first
+		if (fastMode) {
+			console.log(`⚡ Fast mode: Attempting to extract contact info from search results...`);
+			const fastExtracted = await this._fastExtractContactInfo(listings);
+			
+			// Count how many already have contact info
+			const withContact = fastExtracted.filter(l => l.phone || l.email).length;
+			console.log(`⚡ Fast extraction found contact info for ${withContact} listings`);
+			
+			// If we have enough contact info, return early
+			if (withContact >= maxClicks) {
+				console.log(`⚡ Fast mode success: Found enough contact info without clicking`);
+				return fastExtracted;
+			}
+			
+			// Otherwise, continue with clicking for remaining listings
+			listings = fastExtracted;
+		}
 
 		for (let i = 0; i < maxClicks; i++) {
 			const listing = { ...listings[i] }; // Clone the listing
+			
+			// Skip if already has contact info (from fast extraction)
+			if (fastMode && (listing.phone || listing.email)) {
+				console.log(`⚡ Skipping ${listing.name} - already has contact info`);
+				detailedListings.push(listing);
+				continue;
+			}
 			
 			try {
 				console.log(`📱 Clicking on listing ${i + 1}: ${listing.name}`);
@@ -588,8 +696,8 @@ class GMBScraper {
 				const clicked = await this._clickOnListing(listing.name, i);
 				
 				if (clicked) {
-					// Wait for details to load
-					await this.page.waitForTimeout(config.GMB?.DETAIL_WAIT_TIME || 3000);
+					// Reduced wait time for faster processing
+					await this.page.waitForTimeout(config.GMB?.DETAIL_WAIT_TIME || 1500);
 					
 					// Extract detailed contact information
 					const detailedInfo = await this._extractDetailedInfo();
@@ -599,8 +707,8 @@ class GMBScraper {
 					
 					console.log(`✅ Got details for ${listing.name}: Phone=${listing.phone || 'N/A'}, Email=${listing.email || 'N/A'}`);
 					
-					// Go back to search results
-					await this._goBackToSearchResults();
+					// Fast navigation back
+					await this._fastGoBack();
 				} else {
 					console.log(`⚠️ Could not click on listing: ${listing.name}`);
 				}
@@ -611,8 +719,12 @@ class GMBScraper {
 			
 			detailedListings.push(listing);
 			
-			// Small delay between clicks
-			await this.page.waitForTimeout(1000);
+			// Reduced delay between clicks for speed
+			if (fastMode) {
+				await this.page.waitForTimeout(500);
+			} else {
+				await this.page.waitForTimeout(1000);
+			}
 		}
 
 		// Add remaining listings without detailed info
@@ -625,9 +737,31 @@ class GMBScraper {
 
 	async _clickOnListing(listingName, index) {
 		try {
-			// Try multiple strategies to find and click the listing
-			const clickStrategies = [
-				// Strategy 1: Click by text content
+			const fastMode = config.GMB?.FAST_MODE || false;
+			
+			// In fast mode, prioritize index-based clicking (fastest)
+			const clickStrategies = fastMode ? [
+				// Fast Strategy 1: Click by index (fastest, no text matching)
+				async () => {
+					const elements = await this.page.locator('.bfdHYd, .Nv2PK, .lI9IFe').all();
+					if (elements.length > index) {
+						await elements[index].click({ timeout: 3000 });
+						return true;
+					}
+					return false;
+				},
+				
+				// Fast Strategy 2: Click by partial text (reduced timeout)
+				async () => {
+					const element = await this.page.locator(`text*="${listingName.substring(0, 10)}"`).first();
+					if (await element.count() > 0) {
+						await element.click({ timeout: 2000 });
+						return true;
+					}
+					return false;
+				}
+			] : [
+				// Regular strategies for non-fast mode
 				async () => {
 					const element = await this.page.locator(`text="${listingName}"`).first();
 					if (await element.count() > 0) {
@@ -637,7 +771,6 @@ class GMBScraper {
 					return false;
 				},
 				
-				// Strategy 2: Click by partial text
 				async () => {
 					const element = await this.page.locator(`text*="${listingName.substring(0, 15)}"`).first();
 					if (await element.count() > 0) {
@@ -647,7 +780,6 @@ class GMBScraper {
 					return false;
 				},
 				
-				// Strategy 3: Click by index in the results list
 				async () => {
 					const elements = await this.page.locator('.bfdHYd, .Nv2PK, .lI9IFe').all();
 					if (elements.length > index) {
@@ -657,7 +789,6 @@ class GMBScraper {
 					return false;
 				},
 				
-				// Strategy 4: Click any clickable element containing the name
 				async () => {
 					const element = await this.page.locator(`[role="button"]:has-text("${listingName}"), a:has-text("${listingName}"), div[jsaction]:has-text("${listingName}")`).first();
 					if (await element.count() > 0) {
@@ -826,6 +957,58 @@ class GMBScraper {
 			return false;
 		} catch (error) {
 			console.log(`Error going back to search results: ${error.message}`);
+			return false;
+		}
+	}
+
+	async _fastExtractContactInfo(listings) {
+		console.log(`⚡ Fast extraction: Scanning search results for visible contact info...`);
+		
+		try {
+			// Try to extract contact info that might be visible in search results
+			const enhancedListings = await this.page.evaluate((listingsData) => {
+				const enhanced = listingsData.map(listing => ({ ...listing }));
+				
+				// Look for phone numbers in the current page content
+				const allText = document.body.textContent || '';
+				const phoneMatches = allText.match(/[\+]?[1]?[\s\-\.]?\(?[0-9]{3}\)?[\s\-\.]?[0-9]{3}[\s\-\.]?[0-9]{4}/g) || [];
+				
+				// Try to match phone numbers to businesses
+				enhanced.forEach((listing, index) => {
+					if (!listing.phone && phoneMatches.length > index) {
+						// Simple heuristic: assign phone numbers in order
+						listing.phone = phoneMatches[index];
+					}
+				});
+				
+				return enhanced;
+			}, listings);
+			
+			return enhancedListings;
+		} catch (error) {
+			console.log(`Fast extraction error: ${error.message}`);
+			return listings;
+		}
+	}
+
+	async _fastGoBack() {
+		try {
+			// Use the fastest method to go back
+			await this.page.keyboard.press('Escape');
+			await this.page.waitForTimeout(800); // Reduced wait time
+			
+			// Quick check if we're back
+			const searchResults = await this.page.locator('.bfdHYd, .Nv2PK').count();
+			if (searchResults > 0) {
+				return true;
+			}
+			
+			// Fallback to browser back
+			await this.page.goBack();
+			await this.page.waitForTimeout(1000);
+			return true;
+		} catch (error) {
+			console.log(`Fast go back error: ${error.message}`);
 			return false;
 		}
 	}

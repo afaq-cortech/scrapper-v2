@@ -61,6 +61,8 @@ Workflow:
 6. 🧠 Use AI to extract business data from page content
 7. 📝 Store extracted leads in Excel/JSON
 
+Note: This scraper focuses on WEBSITE scraping. For Google My Business (GMB) scraping, use the separate GMB scraper.
+
 Usage:
   # Keyword-based scraping:
   node index.js [keywords] [leads_per_keyword] [depth]
@@ -77,6 +79,13 @@ Usage:
   node index.js history                     # Show scraping history statistics
   node index.js list-history                # List all history files
   node index.js clear-history [keyword]     # Clear history (all or specific keyword)
+  
+  # GMB Scraping (separate command):
+  node gmb-scraper.js [keywords] [results]  # GMB-only scraping with contact info
+  node gmb-scraper.js help                  # Show GMB scraper help
+  node gmb-scraper.js status                # Show GMB scraper status
+  npm run gmb [keywords] [results]          # Alternative GMB command
+  npm run gmb-help                          # Show GMB help
 
 Arguments:
   keywords              Comma-separated keywords OR "config" OR "file"
@@ -106,10 +115,17 @@ Examples:
   node index.js url "https://example.com,https://business.com" 1
   node index.js urls "https://restaurant.com,https://clinic.com,https://lawfirm.com" 2
   
+  # GMB scraping (separate tool):
+  node gmb-scraper.js "restaurants New York,coffee shops Brooklyn" 15
+  node gmb-scraper.js "dentist Miami,plumber Chicago" 10
+  node gmb-scraper.js file 25
+  npm run gmb "pizza Manhattan" 20
+  
   # System commands:
   node index.js history
   node index.js list-history
   node index.js clear-history "restaurants New York"
+  node gmb-scraper.js status
 
 Requirements:
   - GEMINI_API_KEY environment variable for AI functionality
@@ -118,9 +134,6 @@ Requirements:
 Environment Variables:
   GEMINI_API_KEY=your_gemini_api_key       # Required: For AI-powered filtering and extraction
 
-Output:
-  Results saved to ./output/ directory
-  Excel or JSON format based on config
 `);
 	}
 

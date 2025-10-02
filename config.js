@@ -132,30 +132,34 @@ module.exports = {
 	},
 
 	GMB: {
-		ENABLED: true,
+		ENABLED: false, // Disabled by default for normal scraping
 		SEPARATE_BROWSER: true, // Use separate Chromium instance for GMB scraping
 		HEADLESS: false, // GMB scraping might need visual interaction
-		MAX_RESULTS_PER_SEARCH: 20, // Maximum GMB listings to extract per search
+		MAX_RESULTS_PER_SEARCH: 40, // Maximum GMB listings to extract per search
 		DELAY_BETWEEN_REQUESTS: 2000, // Delay between GMB requests
 		EXTRACTION_TIMEOUT: 30000, // Timeout for GMB data extraction
 		RETRY_ATTEMPTS: 3, // Number of retry attempts for failed extractions
-		SCROLL_ATTEMPTS: 3, // Number of scroll attempts to load more GMB listings
+		SCROLL_ATTEMPTS: 5, // Number of scroll attempts to load more GMB listings (increased)
 		WAIT_FOR_LOAD: 5000, // Wait time for GMB listings to load
 		CLICK_FOR_DETAILS: true, // Click on listings to get detailed contact info
-		MAX_DETAIL_CLICKS: 5, // Maximum number of listings to click for details
-		DETAIL_WAIT_TIME: 3000, // Wait time after clicking for details to load
+		MAX_DETAIL_CLICKS: 8, // Maximum number of listings to click for details (increased for more leads)
+		DETAIL_WAIT_TIME: 3000, // Wait time after clicking for details to load (reduced
 		REQUIRE_CONTACT: true, // Only return listings with phone OR email
+		PARALLEL_PROCESSING: false, // Process listings in parallel (experimental)
+		FAST_MODE: false, // Enable fast mode optimizations
+		ULTRA_FAST_MODE: false, // Skip clicking entirely for maximum speed (may reduce contact info quality)
+		STANDALONE_MODE: false, // Set to true when running GMB-only scraping
 		EXTRACT_FIELDS: {
 			NAME: true,
 			PHONE: true,
 			EMAIL: true,
 			ADDRESS: true,
 			WEBSITE: true,
-			RATING: true,
-			REVIEW_COUNT: true,
-			CATEGORY: true,
-			HOURS: true,
-			DESCRIPTION: true
+			RATING: false,
+			REVIEW_COUNT: false,
+			CATEGORY: false,
+			HOURS: false,
+			DESCRIPTION: false
 		}
 	},
 

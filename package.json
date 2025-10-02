@@ -9,7 +9,9 @@
 		"status": "node index.js status",
 		"test": "node test-enhanced-scraper.js",
 		"test-lead-scraper": "node test-enhanced-scraper.js",
-		"test-gmb": "node test-gmb-scraper.js"
+		"test-gmb": "node test-gmb-scraper.js",
+		"gmb": "node gmb-scraper.js",
+		"gmb-help": "node gmb-scraper.js help"
 	},
 	"keywords": [
 		"lead-generation",
