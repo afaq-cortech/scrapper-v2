@@ -656,7 +656,7 @@ class DataProcessor {
       return processed;
     });
 
-    const uniqueLeads = this.removeDuplicates(processedLeads);
+    const uniqueLeads = processedLeads; // Skip duplicate removal
     const validLeads = uniqueLeads.filter((lead) => lead.isValid);
 
     console.log(

@@ -14,7 +14,12 @@ module.exports = {
 		ENABLED: process.env.GEMINI_API_KEY ? true : false,
 		MAX_TOKENS: 800,
 		TEMPERATURE: 0.1,
-		TIMEOUT:30000,
+		TIMEOUT: 30000,
+		RETRY_ATTEMPTS: 5, // Number of retry attempts for API errors
+		RETRY_DELAY: 2000, // Base delay between retries (ms)
+		MAX_RETRY_DELAY: 30000, // Maximum delay between retries (ms)
+		EXPONENTIAL_BACKOFF: true, // Use exponential backoff for retries
+		RATE_LIMIT_DELAY: 1000, // Additional delay between requests to avoid rate limits
 	},
 
 	PLAYWRIGHT: {
@@ -66,7 +71,7 @@ module.exports = {
 		ENABLED: true,
 		DEFAULT_DEPTH: 1, // Default depth for child link scraping
 		MAX_DEPTH: 3, // Maximum allowed depth
-		MAX_CHILD_LINKS_PER_PAGE: 100, // Maximum child links to extract per page
+		MAX_CHILD_LINKS_PER_PAGE: 20, // Maximum child links to extract per page
 		EXCLUDE_PATTERNS: [ // Patterns to exclude from child links
 			"mailto:",
 			"tel:",

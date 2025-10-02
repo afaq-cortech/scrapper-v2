@@ -9,6 +9,13 @@ class LeadExtractor {
     this.model = this.genAI
       ? this.genAI.getGenerativeModel({ model: config.LLM.MODEL })
       : null;
+    
+    // Circuit breaker properties
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.circuitBreakerThreshold = 5; // Failures before circuit opens
+    this.circuitBreakerTimeout = 300000; // 5 minutes
+    this.circuitOpen = false;
   }
 
   async extractLeads(websiteData, keyword) {
@@ -56,14 +63,11 @@ class LeadExtractor {
   async processSingleBatch(websiteData, keyword, content) {
     const prompt = this.buildExtractionPrompt(websiteData, keyword, content);
 
-    try {
+    return await this.retryWithBackoff(async () => {
       const result = await this.model.generateContent(prompt);
       const response = await result.response.text();
       return this.parseExtractionResponse(response, websiteData);
-    } catch (error) {
-      console.error("Gemini extraction error:", error);
-      return this.extractBasicLeads([websiteData]);
-    }
+    }, `Gemini extraction for ${websiteData.url}`);
   }
 
   async processLargeContent(websiteData, keyword, content) {
@@ -92,10 +96,14 @@ class LeadExtractor {
         contextSummary = newContextSummary;
 
         if (!isLastBatch) {
-          await this.delay(1000);
+          // Add rate limiting delay between batches
+          const rateLimitDelay = config.LLM.RATE_LIMIT_DELAY || 1000;
+          await this.delay(rateLimitDelay);
         }
       } catch (error) {
         console.error(`Batch ${i + 1} processing failed:`, error);
+        // Continue with next batch even if one fails
+        continue;
       }
     }
 
@@ -117,8 +125,10 @@ class LeadExtractor {
       isLastBatch
     );
 
-    const result = await this.model.generateContent(prompt);
-    return await result.response.text();
+    return await this.retryWithBackoff(async () => {
+      const result = await this.model.generateContent(prompt);
+      return await result.response.text();
+    }, `Gemini batch processing for ${websiteData.url}`);
   }
 
   buildExtractionPrompt(websiteData, keyword, content) {
@@ -399,8 +409,128 @@ Respond in valid JSON format only.`;
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Check if circuit breaker is open
+   * @returns {boolean} Whether the circuit is open
+   */
+  isCircuitOpen() {
+    if (!this.circuitOpen) return false;
+    
+    // Check if timeout has passed
+    const now = Date.now();
+    if (now - this.lastFailureTime > this.circuitBreakerTimeout) {
+      console.log('🔄 Circuit breaker timeout passed, attempting to close circuit');
+      this.circuitOpen = false;
+      this.failureCount = 0;
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Record a successful operation
+   */
+  recordSuccess() {
+    this.failureCount = 0;
+    this.circuitOpen = false;
+  }
+
+  /**
+   * Record a failed operation
+   */
+  recordFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failureCount >= this.circuitBreakerThreshold) {
+      this.circuitOpen = true;
+      console.warn(`🚨 Circuit breaker opened after ${this.failureCount} failures`);
+    }
+  }
+
+  /**
+   * Retry mechanism with exponential backoff for API calls
+   * @param {Function} operation - The async operation to retry
+   * @param {string} operationName - Name of the operation for logging
+   * @returns {Promise} Result of the operation
+   */
+  async retryWithBackoff(operation, operationName) {
+    // Check circuit breaker
+    if (this.isCircuitOpen()) {
+      console.warn(`🚨 Circuit breaker is open, falling back to basic extraction for ${operationName}`);
+      return this.extractBasicLeads([{ url: operationName, content: '' }]);
+    }
+
+    const maxRetries = config.LLM.RETRY_ATTEMPTS || 5;
+    const baseDelay = config.LLM.RETRY_DELAY || 2000;
+    const maxDelay = config.LLM.MAX_RETRY_DELAY || 30000;
+    const useExponentialBackoff = config.LLM.EXPONENTIAL_BACKOFF !== false;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Add rate limiting delay between requests
+        if (attempt > 1) {
+          const rateLimitDelay = config.LLM.RATE_LIMIT_DELAY || 1000;
+          await this.delay(rateLimitDelay);
+        }
+
+        const result = await operation();
+        this.recordSuccess(); // Record successful operation
+        return result;
+      } catch (error) {
+        this.recordFailure(); // Record failed operation
+        
+        const isRetryableError = this.isRetryableError(error);
+        
+        if (!isRetryableError || attempt === maxRetries) {
+          console.error(`❌ ${operationName} failed after ${attempt} attempts:`, error.message);
+          if (isRetryableError) {
+            console.log(`🔄 Falling back to basic extraction for ${operationName}`);
+            return this.extractBasicLeads([{ url: operationName, content: '' }]);
+          }
+          throw error;
+        }
+
+        // Calculate delay with exponential backoff
+        let delay = baseDelay;
+        if (useExponentialBackoff) {
+          delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+        }
+
+        console.warn(`⚠️ ${operationName} attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+        console.log(`🔄 Retrying in ${delay}ms...`);
+        
+        await this.delay(delay);
+      }
+    }
+  }
+
+  /**
+   * Check if an error is retryable
+   * @param {Error} error - The error to check
+   * @returns {boolean} Whether the error is retryable
+   */
+  isRetryableError(error) {
+    const retryableErrors = [
+      '503 Service Unavailable',
+      '429 Too Many Requests',
+      '500 Internal Server Error',
+      '502 Bad Gateway',
+      '504 Gateway Timeout',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND'
+    ];
+
+    const errorMessage = error.message || error.toString();
+    return retryableErrors.some(retryableError => 
+      errorMessage.includes(retryableError)
+    );
+  }
+
   isAvailable() {
-    return !!this.genAI;
+    return !!this.genAI && !this.isCircuitOpen();
   }
 }
 
